@@ -18,7 +18,7 @@ Crop Field AI is a machine-learning-based agricultural decision-support applicat
 The application is deployed using Streamlit Community Cloud.
 
 **Live Demo:**  
-https://crop-recommendation-and-yield-prediction-system-ymxndqgfkmw2y.streamlit.app/
+https://crop-recommendation-and-yield-prediction-system-ymyxndqqfkmw2y.streamlit.app/
 
 ---
 
