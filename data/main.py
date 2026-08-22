@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 from pathlib import Path
+from huggingface_hub import hf_hub_download
 
 
 # ============================================================
@@ -18,15 +19,11 @@ st.set_page_config(
 
 
 # ============================================================
-# PATH CONFIGURATION
+# PATHS
 # ============================================================
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = CURRENT_DIR.parent
-
-# ------------------------------------------------------------
-# Recommendation model files
-# ------------------------------------------------------------
 
 RECOMMENDATION_MODEL_PATH = (
     PROJECT_DIR / "notebooks" / "crop_recommendation_model.pkl"
@@ -35,10 +32,6 @@ RECOMMENDATION_MODEL_PATH = (
 LABEL_ENCODER_PATH = (
     PROJECT_DIR / "notebooks" / "label_encoder.pkl"
 )
-
-# ------------------------------------------------------------
-# Yield model files
-# ------------------------------------------------------------
 
 YIELD_MODEL_PATH = (
     CURRENT_DIR / "yield_random_forest_model.pkl"
@@ -50,15 +43,28 @@ YIELD_PREPROCESSOR_PATH = (
 
 
 # ============================================================
+# HUGGING FACE CONFIGURATION
+# ============================================================
+
+HF_YIELD_REPO_ID = (
+    "madarchoot/crop-field-yield-model"
+)
+
+HF_YIELD_MODEL_FILENAME = (
+    "yield_random_forest_model.pkl"
+)
+
+
+# ============================================================
 # VERIFIED DATASET RANGES
 # ============================================================
 
 # ------------------------------------------------------------
 # Crop Recommendation Dataset
-# 2200 rows, 22 crop classes
 # ------------------------------------------------------------
 
 REC_RANGES = {
+
     "N": {
         "min": 0.0,
         "max": 140.0,
@@ -105,10 +111,10 @@ REC_RANGES = {
 
 # ------------------------------------------------------------
 # Yield Dataset
-# 19689 rows
 # ------------------------------------------------------------
 
 YIELD_RANGES = {
+
     "Crop_Year": {
         "min": 1997,
         "max": 2020,
@@ -147,23 +153,76 @@ YIELD_RANGES = {
 
 
 # ============================================================
+# GET YIELD MODEL PATH
+# ============================================================
+
+def get_yield_model_path():
+
+    # --------------------------------------------------------
+    # LOCAL DEVELOPMENT
+    # --------------------------------------------------------
+
+    if YIELD_MODEL_PATH.exists():
+
+        return YIELD_MODEL_PATH
+
+    # --------------------------------------------------------
+    # STREAMLIT CLOUD / DEPLOYMENT
+    # --------------------------------------------------------
+
+    try:
+
+        downloaded_path = hf_hub_download(
+            repo_id=HF_YIELD_REPO_ID,
+            filename=HF_YIELD_MODEL_FILENAME
+        )
+
+        return Path(downloaded_path)
+
+    except Exception as e:
+
+        raise RuntimeError(
+            "Could not download the yield model from "
+            f"Hugging Face repository: {HF_YIELD_REPO_ID}"
+        ) from e
+
+
+# ============================================================
 # LOAD MODELS
 # ============================================================
 
 @st.cache_resource
 def load_models():
 
+    # --------------------------------------------------------
+    # CROP RECOMMENDATION MODEL
+    # --------------------------------------------------------
+
     recommendation_model = joblib.load(
         RECOMMENDATION_MODEL_PATH
     )
+
+    # --------------------------------------------------------
+    # LABEL ENCODER
+    # --------------------------------------------------------
 
     label_encoder = joblib.load(
         LABEL_ENCODER_PATH
     )
 
+    # --------------------------------------------------------
+    # YIELD MODEL
+    # --------------------------------------------------------
+
+    yield_model_path = get_yield_model_path()
+
     yield_model = joblib.load(
-        YIELD_MODEL_PATH
+        yield_model_path
     )
+
+    # --------------------------------------------------------
+    # YIELD PREPROCESSOR
+    # --------------------------------------------------------
 
     yield_preprocessor = joblib.load(
         YIELD_PREPROCESSOR_PATH
@@ -190,13 +249,11 @@ try:
         yield_preprocessor
     ) = load_models()
 
-    models_loaded = True
-
 except Exception as e:
 
-    models_loaded = False
-
-    st.error("❌ ML model loading failed.")
+    st.error(
+        "❌ ML model loading failed."
+    )
 
     st.code(
         str(e)
@@ -263,10 +320,7 @@ with st.sidebar:
 
     st.markdown(
         """
-        <div style="
-            font-size:30px;
-            font-weight:700;
-        ">
+        <div style="font-size:30px;font-weight:700;">
         🌾 Crop Field AI
         </div>
         """,
@@ -275,7 +329,9 @@ with st.sidebar:
 
     st.divider()
 
-    st.markdown("### Choose Module")
+    st.markdown(
+        "### Choose Module"
+    )
 
     module = st.radio(
         "",
@@ -314,14 +370,14 @@ st.markdown(
 
 
 # ============================================================
-# ============================================================
 # CROP RECOMMENDATION
-# ============================================================
 # ============================================================
 
 if module == "🌱 Crop Recommendation":
 
-    st.header("🌱 Crop Recommendation")
+    st.header(
+        "🌱 Crop Recommendation"
+    )
 
     st.write(
         """
@@ -418,21 +474,15 @@ if module == "🌱 Crop Recommendation":
     st.divider()
 
     # --------------------------------------------------------
-    # BUTTON
+    # RECOMMEND BUTTON
     # --------------------------------------------------------
 
-    recommend_button = st.button(
+    if st.button(
         "🌱 Recommend Crop",
         use_container_width=True
-    )
-
-    if recommend_button:
+    ):
 
         try:
-
-            # ------------------------------------------------
-            # CREATE DATAFRAME
-            # ------------------------------------------------
 
             recommendation_input = pd.DataFrame(
                 [[
@@ -459,8 +509,10 @@ if module == "🌱 Crop Recommendation":
             # MODEL PREDICTION
             # ------------------------------------------------
 
-            prediction = recommendation_model.predict(
-                recommendation_input
+            prediction = (
+                recommendation_model.predict(
+                    recommendation_input
+                )
             )
 
             predicted_class = prediction[0]
@@ -471,9 +523,12 @@ if module == "🌱 Crop Recommendation":
 
             try:
 
-                predicted_crop = label_encoder.inverse_transform(
-                    [predicted_class]
-                )[0]
+                predicted_crop = (
+                    label_encoder
+                    .inverse_transform(
+                        [predicted_class]
+                    )[0]
+                )
 
             except Exception:
 
@@ -484,7 +539,7 @@ if module == "🌱 Crop Recommendation":
             ).strip()
 
             # ------------------------------------------------
-            # SUCCESS
+            # RESULT
             # ------------------------------------------------
 
             st.success(
@@ -509,8 +564,7 @@ if module == "🌱 Crop Recommendation":
                 )
 
                 classes = (
-                    recommendation_model
-                    .classes_
+                    recommendation_model.classes_
                 )
 
                 results = []
@@ -533,13 +587,9 @@ if module == "🌱 Crop Recommendation":
 
                         crop_name = class_value
 
-                    crop_name = str(
-                        crop_name
-                    ).strip()
-
                     results.append(
                         (
-                            crop_name,
+                            str(crop_name).strip(),
                             float(probability)
                         )
                     )
@@ -619,12 +669,14 @@ if module == "🌱 Crop Recommendation":
                         explanation = (
                             f"The model selected "
                             f"**{top_results[0][0].upper()}** "
-                            f"because it has the highest predicted "
-                            f"probability. However, the probability "
-                            f"is relatively close to "
+                            f"because it has the highest "
+                            f"predicted probability. However, "
+                            f"the probability is relatively "
+                            f"close to "
                             f"**{top_results[1][0].upper()}** "
-                            f"({second_probability:.2f}%), so the "
-                            f"model shows some uncertainty."
+                            f"({second_probability:.2f}%), "
+                            f"so the model shows some "
+                            f"uncertainty."
                         )
 
                     else:
@@ -632,8 +684,9 @@ if module == "🌱 Crop Recommendation":
                         explanation = (
                             f"The model selected "
                             f"**{top_results[0][0].upper()}** "
-                            f"because it has the highest predicted "
-                            f"probability among the supported crops."
+                            f"because it has the highest "
+                            f"predicted probability among "
+                            f"the supported crops."
                         )
 
                     st.info(
@@ -642,10 +695,9 @@ if module == "🌱 Crop Recommendation":
 
                 st.caption(
                     """
-                    Note: The displayed probabilities represent
-                    the model's predicted probabilities. They are
-                    not a guarantee that the recommended crop will
-                    produce the highest real-world yield.
+                    Note: The displayed probabilities are
+                    model probabilities, not a guarantee of
+                    real-world crop performance or yield.
                     """
                 )
 
@@ -671,7 +723,9 @@ if module == "🌱 Crop Recommendation":
                 )
 
                 st.bar_chart(
-                    chart_df.set_index("Crop")
+                    chart_df.set_index(
+                        "Crop"
+                    )
                 )
 
             # ------------------------------------------------
@@ -722,19 +776,19 @@ if module == "🌱 Crop Recommendation":
 
 
 # ============================================================
-# ============================================================
 # YIELD PREDICTION
-# ============================================================
 # ============================================================
 
 elif module == "📊 Yield Prediction":
 
-    st.header("📊 Crop Yield Prediction")
+    st.header(
+        "📊 Crop Yield Prediction"
+    )
 
     st.write(
         """
-        Enter the crop, season, state and agricultural conditions
-        to estimate crop yield.
+        Enter the crop, season, state and agricultural
+        conditions to estimate crop yield.
         """
     )
 
@@ -742,8 +796,8 @@ elif module == "📊 Yield Prediction":
         """
         ℹ️ Numeric limits are taken directly from the original
         crop-yield training dataset. The model does not use
-        Production as an input because Production is not available
-        before prediction.
+        Production as an input because Production is not
+        available before prediction.
         """
     )
 
@@ -759,9 +813,15 @@ elif module == "📊 Yield Prediction":
 
         crop_year = st.number_input(
             "📅 Crop Year",
-            min_value=YIELD_RANGES["Crop_Year"]["min"],
-            max_value=YIELD_RANGES["Crop_Year"]["max"],
-            value=YIELD_RANGES["Crop_Year"]["default"],
+            min_value=YIELD_RANGES[
+                "Crop_Year"
+            ]["min"],
+            max_value=YIELD_RANGES[
+                "Crop_Year"
+            ]["max"],
+            value=YIELD_RANGES[
+                "Crop_Year"
+            ]["default"],
             step=1
         )
 
@@ -783,17 +843,13 @@ elif module == "📊 Yield Prediction":
         )
 
     # ========================================================
-    # GET CATEGORIES FROM TRAINED PREPROCESSOR
+    # GET CATEGORIES FROM PREPROCESSOR
     # ========================================================
 
     def extract_categories(
         preprocessor,
         column_name
     ):
-        """
-        Extract the categories learned by the OneHotEncoder
-        from the saved preprocessing pipeline.
-        """
 
         try:
 
@@ -812,9 +868,10 @@ elif module == "📊 Yield Prediction":
                 ):
                     continue
 
-                # Look for OneHotEncoder
-                for step_name, step in (
-                    transformer.named_steps.items()
+                for step in (
+                    transformer
+                    .named_steps
+                    .values()
                 ):
 
                     if not hasattr(
@@ -823,33 +880,28 @@ elif module == "📊 Yield Prediction":
                     ):
                         continue
 
-                    if not hasattr(
+                    feature_names = getattr(
                         step,
-                        "feature_names_in_"
-                    ):
+                        "feature_names_in_",
+                        None
+                    )
+
+                    if feature_names is None:
                         continue
 
                     feature_names = list(
-                        step.feature_names_in_
+                        feature_names
                     )
 
                     if column_name not in feature_names:
                         continue
 
-                    column_index = (
-                        feature_names.index(
-                            column_name
-                        )
-                    )
-
-                    categories = (
-                        step.categories_[
-                            column_index
-                        ]
+                    index = feature_names.index(
+                        column_name
                     )
 
                     return list(
-                        categories
+                        step.categories_[index]
                     )
 
         except Exception:
@@ -857,12 +909,12 @@ elif module == "📊 Yield Prediction":
 
         return None
 
-
     # ========================================================
-    # FALLBACK CATEGORIES
+    # DEFAULT CATEGORIES
     # ========================================================
 
     DEFAULT_CROPS = [
+
         "Arecanut",
         "Arhar/Tur",
         "Bajra",
@@ -872,7 +924,7 @@ elif module == "📊 Yield Prediction":
         "Cardamom",
         "Cashewnut",
         "Castor seed",
-        "Coconut ",
+        "Coconut",
         "Coriander",
         "Cotton(lint)",
         "Cowpea(Lobia)",
@@ -918,15 +970,17 @@ elif module == "📊 Yield Prediction":
     ]
 
     DEFAULT_SEASONS = [
-        "Autumn     ",
-        "Kharif     ",
-        "Rabi       ",
-        "Summer     ",
-        "Whole Year ",
-        "Winter     "
+
+        "Autumn",
+        "Kharif",
+        "Rabi",
+        "Summer",
+        "Whole Year",
+        "Winter"
     ]
 
     DEFAULT_STATES = [
+
         "Andhra Pradesh",
         "Arunachal Pradesh",
         "Assam",
@@ -960,7 +1014,6 @@ elif module == "📊 Yield Prediction":
         "West Bengal"
     ]
 
-
     # ========================================================
     # LOAD CATEGORIES
     # ========================================================
@@ -989,40 +1042,51 @@ elif module == "📊 Yield Prediction":
         or DEFAULT_STATES
     )
 
-
     # ========================================================
-    # CREATE DISPLAY/ACTUAL VALUE MAPPING
+    # DISPLAY MAPPING
     # ========================================================
 
-    def create_display_mapping(values):
+    def create_display_mapping(
+        values
+    ):
 
         mapping = {}
 
         for value in values:
 
-            actual_value = str(value)
-            display_value = actual_value.strip()
+            actual_value = str(
+                value
+            )
 
-            # Avoid duplicate display names
+            display_value = (
+                actual_value.strip()
+            )
+
             if display_value not in mapping:
 
-                mapping[display_value] = actual_value
+                mapping[
+                    display_value
+                ] = actual_value
 
         return mapping
 
-
-    crop_mapping = create_display_mapping(
-        crops
+    crop_mapping = (
+        create_display_mapping(
+            crops
+        )
     )
 
-    season_mapping = create_display_mapping(
-        seasons
+    season_mapping = (
+        create_display_mapping(
+            seasons
+        )
     )
 
-    state_mapping = create_display_mapping(
-        states
+    state_mapping = (
+        create_display_mapping(
+            states
+        )
     )
-
 
     # ========================================================
     # CATEGORICAL INPUTS
@@ -1034,17 +1098,23 @@ elif module == "📊 Yield Prediction":
 
         crop_display = st.selectbox(
             "🌱 Crop",
-            list(crop_mapping.keys())
+            list(
+                crop_mapping.keys()
+            )
         )
 
         season_display = st.selectbox(
             "🌦️ Season",
-            list(season_mapping.keys())
+            list(
+                season_mapping.keys()
+            )
         )
 
         state_display = st.selectbox(
             "📍 State",
-            list(state_mapping.keys())
+            list(
+                state_mapping.keys()
+            )
         )
 
         area = st.number_input(
@@ -1096,26 +1166,24 @@ elif module == "📊 Yield Prediction":
 
     st.caption(
         """
-        Fertilizer and pesticide are entered as quantities because
-        the original dataset contains quantity values, not product
-        or chemical names. The model therefore predicts based on
-        quantity, not on a specific fertilizer/pesticide brand.
+        Fertilizer and pesticide are entered as quantities
+        because the original dataset contains quantity values,
+        not product or chemical names. The model therefore
+        predicts based on quantity, not on a specific fertilizer
+        or pesticide brand.
         """
     )
 
     st.divider()
 
-
     # ========================================================
     # PREDICT BUTTON
     # ========================================================
 
-    predict_button = st.button(
+    if st.button(
         "📊 Estimate Crop Yield",
         use_container_width=True
-    )
-
-    if predict_button:
+    ):
 
         try:
 
@@ -1141,75 +1209,91 @@ elif module == "📊 Yield Prediction":
 
             errors = []
 
-            if not (
-                YIELD_RANGES[
-                    "Crop_Year"
-                ]["min"]
-                <= crop_year
-                <= YIELD_RANGES[
-                    "Crop_Year"
-                ]["max"]
-            ):
+            checks = [
 
-                errors.append(
-                    "Crop year is outside the training-data range."
+                (
+                    "Crop year",
+                    crop_year,
+                    YIELD_RANGES[
+                        "Crop_Year"
+                    ]["min"],
+                    YIELD_RANGES[
+                        "Crop_Year"
+                    ]["max"],
+                    "Crop year is outside "
+                    "the training-data range."
+                ),
+
+                (
+                    "Cultivated area",
+                    area,
+                    YIELD_RANGES[
+                        "Area"
+                    ]["min"],
+                    YIELD_RANGES[
+                        "Area"
+                    ]["max"],
+                    "Cultivated area is outside "
+                    "the training-data range."
+                ),
+
+                (
+                    "Annual rainfall",
+                    annual_rainfall,
+                    YIELD_RANGES[
+                        "Annual_Rainfall"
+                    ]["min"],
+                    YIELD_RANGES[
+                        "Annual_Rainfall"
+                    ]["max"],
+                    "Annual rainfall is outside "
+                    "the training-data range."
+                ),
+
+                (
+                    "Fertilizer quantity",
+                    fertilizer,
+                    YIELD_RANGES[
+                        "Fertilizer"
+                    ]["min"],
+                    YIELD_RANGES[
+                        "Fertilizer"
+                    ]["max"],
+                    "Fertilizer quantity is outside "
+                    "the training-data range."
+                ),
+
+                (
+                    "Pesticide quantity",
+                    pesticide,
+                    YIELD_RANGES[
+                        "Pesticide"
+                    ]["min"],
+                    YIELD_RANGES[
+                        "Pesticide"
+                    ]["max"],
+                    "Pesticide quantity is outside "
+                    "the training-data range."
                 )
+            ]
 
-            if not (
-                YIELD_RANGES[
-                    "Area"
-                ]["min"]
-                <= area
-                <= YIELD_RANGES[
-                    "Area"
-                ]["max"]
-            ):
+            for (
+                name,
+                value,
+                minimum,
+                maximum,
+                message
+            ) in checks:
 
-                errors.append(
-                    "Cultivated area is outside the training-data range."
-                )
+                if not (
+                    minimum
+                    <= value
+                    <= maximum
+                ):
 
-            if not (
-                YIELD_RANGES[
-                    "Annual_Rainfall"
-                ]["min"]
-                <= annual_rainfall
-                <= YIELD_RANGES[
-                    "Annual_Rainfall"
-                ]["max"]
-            ):
-
-                errors.append(
-                    "Annual rainfall is outside the training-data range."
-                )
-
-            if not (
-                YIELD_RANGES[
-                    "Fertilizer"
-                ]["min"]
-                <= fertilizer
-                <= YIELD_RANGES[
-                    "Fertilizer"
-                ]["max"]
-            ):
-
-                errors.append(
-                    "Fertilizer quantity is outside the training-data range."
-                )
-
-            if not (
-                YIELD_RANGES[
-                    "Pesticide"
-                ]["min"]
-                <= pesticide
-                <= YIELD_RANGES[
-                    "Pesticide"
-                ]["max"]
-            ):
-
-                errors.append(
-                    "Pesticide quantity is outside the training-data range."
-                )
+                    errors.append(
+                        message
+                    )
 
             # ------------------------------------------------
             # STOP IF INVALID
@@ -1225,40 +1309,31 @@ elif module == "📊 Yield Prediction":
 
                 st.stop()
 
-
             # ------------------------------------------------
             # CREATE INPUT DATAFRAME
-            # ------------------------------------------------
-            #
-            # IMPORTANT:
-            # Production is NOT included.
-            #
-            # The trained model uses:
-            #
-            # Crop
-            # Crop_Year
-            # Season
-            # State
-            # Area
-            # Annual_Rainfall
-            # Fertilizer
-            # Pesticide
-            #
             # ------------------------------------------------
 
             yield_input = pd.DataFrame(
                 {
-                    "Crop": [crop],
+                    "Crop": [
+                        crop
+                    ],
 
                     "Crop_Year": [
                         int(crop_year)
                     ],
 
-                    "Season": [season],
+                    "Season": [
+                        season
+                    ],
 
-                    "State": [state],
+                    "State": [
+                        state
+                    ],
 
-                    "Area": [area],
+                    "Area": [
+                        area
+                    ],
 
                     "Annual_Rainfall": [
                         annual_rainfall
@@ -1274,7 +1349,6 @@ elif module == "📊 Yield Prediction":
                 }
             )
 
-
             # ------------------------------------------------
             # PREPROCESS
             # ------------------------------------------------
@@ -1285,13 +1359,13 @@ elif module == "📊 Yield Prediction":
                 )
             )
 
-
             # ------------------------------------------------
             # MODEL PREDICTION
             # ------------------------------------------------
 
             predicted_yield = (
-                yield_model.predict(
+                yield_model
+                .predict(
                     transformed_input
                 )[0]
             )
@@ -1299,7 +1373,6 @@ elif module == "📊 Yield Prediction":
             predicted_yield = float(
                 predicted_yield
             )
-
 
             # ------------------------------------------------
             # SAFETY
@@ -1318,24 +1391,14 @@ elif module == "📊 Yield Prediction":
                 predicted_yield
             )
 
-
             # ------------------------------------------------
-            # ESTIMATED TOTAL OUTPUT
-            # ------------------------------------------------
-            #
-            # Derived as:
-            #
-            # Predicted Yield × Area
-            #
-            # This is displayed as a derived estimate in the
-            # same dataset-compatible yield/area units.
-            #
+            # TOTAL OUTPUT
             # ------------------------------------------------
 
             estimated_total_output = (
-                predicted_yield * area
+                predicted_yield
+                * area
             )
-
 
             # =================================================
             # RESULT
@@ -1377,7 +1440,6 @@ elif module == "📊 Yield Prediction":
                 unsafe_allow_html=True
             )
 
-
             # =================================================
             # TOTAL OUTPUT
             # =================================================
@@ -1393,12 +1455,11 @@ elif module == "📊 Yield Prediction":
 
             st.caption(
                 """
-                Calculated as predicted yield × cultivated area.
-                The result uses the same yield/area units represented
-                by the training dataset.
+                Calculated as predicted yield × cultivated
+                area. The result uses the same yield/area
+                units represented by the training dataset.
                 """
             )
-
 
             # =================================================
             # INTERPRETATION
@@ -1409,18 +1470,18 @@ elif module == "📊 Yield Prediction":
                 **What does this mean?**
 
                 For the selected **{crop_display}** in
-                **{state_display}** during **{season_display.strip()}**,
-                the model estimates a yield of approximately
-                **{predicted_yield:,.2f} yield units per unit of
-                cultivated area**.
+                **{state_display}** during
+                **{season_display}**, the model estimates
+                a yield of approximately
+                **{predicted_yield:,.2f} yield units per
+                unit of cultivated area**.
 
                 For the entered cultivated area of
-                **{area:,.2f}**, the corresponding derived total
-                output estimate is approximately
+                **{area:,.2f}**, the corresponding derived
+                total output estimate is approximately
                 **{estimated_total_output:,.2f}**.
                 """
             )
-
 
             # =================================================
             # MODEL INFORMATION
@@ -1448,7 +1509,6 @@ elif module == "📊 Yield Prediction":
                 """
             )
 
-
             # =================================================
             # INPUT SUMMARY
             # =================================================
@@ -1460,6 +1520,7 @@ elif module == "📊 Yield Prediction":
             summary_df = pd.DataFrame(
                 {
                     "Parameter": [
+
                         "Crop",
                         "Crop Year",
                         "Season",
@@ -1471,6 +1532,7 @@ elif module == "📊 Yield Prediction":
                     ],
 
                     "Value": [
+
                         crop_display,
                         crop_year,
                         season_display,
@@ -1488,7 +1550,6 @@ elif module == "📊 Yield Prediction":
                 use_container_width=True,
                 hide_index=True
             )
-
 
         except Exception as e:
 
@@ -1511,34 +1572,65 @@ st.caption(
 )
 
 
+# ============================================================
+# YIELD MODEL FEATURE IMPORTANCE
+# ============================================================
 
-st.subheader("🔍 Yield Model Feature Importance")
+st.subheader(
+    "🔍 Yield Model Feature Importance"
+)
 
 try:
-    feature_names = yield_preprocessor.get_feature_names_out()
 
-    importances = yield_model.feature_importances_
-
-    importance_df = pd.DataFrame({
-        "Feature": feature_names,
-        "Importance": importances
-    })
-
-    importance_df["Importance (%)"] = (
-        importance_df["Importance"] * 100
+    feature_names = (
+        yield_preprocessor
+        .get_feature_names_out()
     )
 
-    importance_df = importance_df.sort_values(
-        "Importance",
-        ascending=False
+    importances = (
+        yield_model
+        .feature_importances_
     )
 
-    st.dataframe(
-        importance_df,
-        use_container_width=True,
-        hide_index=True
-    )
+    if len(feature_names) == len(
+        importances
+    ):
 
-except Exception as e:
-    st.error("Could not extract yield feature names.")
-    st.exception(e)
+        importance_df = pd.DataFrame(
+            {
+                "Feature": feature_names,
+
+                "Importance": importances,
+
+                "Importance (%)":
+                    importances * 100
+            }
+        )
+
+        importance_df = (
+            importance_df
+            .sort_values(
+                "Importance",
+                ascending=False
+            )
+        )
+
+        st.dataframe(
+            importance_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    else:
+
+        st.warning(
+            "Feature names and model importances "
+            "have different lengths."
+        )
+
+except Exception:
+
+    st.warning(
+        "Yield feature importance is unavailable "
+        "for this saved model."
+    )
